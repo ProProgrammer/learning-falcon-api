@@ -6,15 +6,16 @@ import uuid
 import falcon
 import msgpack
 import os
+import re
 
 
-class Resource(object):
+class Collection(object):
 
-    # The resource object must now be initialised with a path used during POST
     def __init__(self, image_store):
         self._image_store = image_store
 
     def on_get(self, req, resp):
+        # TO-DO: Modify this to return a list of href's based on what images are actually available
         doc = {
             'images': [
                 {
@@ -25,9 +26,6 @@ class Resource(object):
 
         resp.data = msgpack.packb(doc, use_bin_type=True)
         resp.content_type = falcon.MEDIA_MSGPACK
-
-        # The following can be omitted since 200 is the default status returned by the framework, but it is included
-        # here to illustrate how this may be overridden as needed.
         resp.status = falcon.HTTP_200
 
     def on_post(self, req, resp):
@@ -36,8 +34,21 @@ class Resource(object):
         resp.location = '/images/' + name
 
 
+class Item(object):
+
+    def __init__(self, image_store):
+        self._image_store = image_store
+
+    def on_get(self, req, resp, name):
+        resp.content_type = mimetypes.guess_type(name)[0]
+        resp.stream, resp.stream_len = self._image_store.open(name)
+
+
 class ImageStore(object):
     _CHUNK_SIZE_BYTES = 4096
+    _IMAGE_NAME_PATTERN = re.compile(
+        '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z]{2,4}$'
+    )
 
     # Note the use of dependency injection for standard library methods. We'll use these later to avoid monkey-patching.
     def __init__(self, storage_path, uuidgen=uuid.uuid4, fopen=io.open):
@@ -59,3 +70,14 @@ class ImageStore(object):
                 image_file.write(chunk)
 
         return name
+
+    def open(self, name):
+        # Always validate untrusted input!
+        if not self._IMAGE_NAME_PATTERN.match(name):
+            raise IOError('File not found')
+
+        image_path = os.path.join(self._storage_path, name)
+        stream = self._fopen(image_path, 'rb')
+        stream_len = os.path.getsize(image_path)
+
+        return stream, stream_len
