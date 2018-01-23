@@ -3,7 +3,7 @@ import msgpack
 import pytest
 from falcon import testing
 
-from qa_infrastructure_api.app import api
+from learning_falcon.app import api
 
 
 @pytest.fixture
